@@ -11,7 +11,7 @@
 
 const REMOTE_API = (function(){
   // Deployed Apps Script Web App URL (Deploy > Manage deployments):
-  const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyi9QKmOvRZv0QQKbbH818gn7tBIDAe6EuuYqnPDxLsBdbxYcdAF-_Z50ul3ILmEcmkkA/exec';
+  const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw15HOlyXuBaTWaBtDyES9D8c4nzmnIbd8GCMD142vJYuz9NM9rvJ_msC--id_cSG11PA/exec';
 
   async function list(table){
     const res = await fetch(`${WEB_APP_URL}?action=list&table=${encodeURIComponent(table)}`);
