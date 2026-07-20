@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Post an Idea · AFC - Town Hall Meeting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+Sinhala:wght@400;500;600;700&family=Noto+Sans+Tamil:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  /* Apply script-appropriate fonts when Sinhala / Tamil is selected, without touching other pages */
+  body.lang-si, body.lang-si input, body.lang-si textarea, body.lang-si select, body.lang-si button {
+    font-family: 'Noto Sans Sinhala', 'Inter', sans-serif;
+  }
+  body.lang-ta, body.lang-ta input, body.lang-ta textarea, body.lang-ta select, body.lang-ta button {
+    font-family: 'Noto Sans Tamil', 'Inter', sans-serif;
+  }
+  .lang-switch{ display:flex; gap:4px; background:var(--paper); border:1px solid var(--line); border-radius:var(--radius-sm); padding:3px; }
+  .lang-switch button{ border:none; background:transparent; padding:6px 12px; font-size:12.5px; font-weight:600; border-radius:6px; cursor:pointer; color:var(--text-muted); }
+  .lang-switch button.active{ background:var(--ink); color:#fff; }
+</style>
+</head>
+<body>
+<script src="js/remoteApi.js"></script>
+<script src="js/store.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+
+<script>
+/* ============================================================
+   TRANSLATIONS — Sinhala / English / Tamil
+   Covers every static UI string on this screen. Category names
+   themselves come from the Google Sheet (admin-entered data) and
+   are not machine-translated here.
+   ============================================================ */
+const LANGS = {
+  en: {
+    langName: "English",
+    eyebrow: "Contribute",
+    pageTitle: "Post an Innovation Idea",
+    formTitleNew: "New idea",
+    formTitleEditDraft: "Edit draft",
+    formTitleEdit: "Edit idea",
+    formSubtitle: "Fields marked * are required. Save a draft any time, or post it for everyone to see and the committee to review.",
+    labelTitle: "Idea title *",
+    placeholderTitle: "e.g. AI-assisted ticket triage for Customer Service",
+    errorTitle: "Give your idea a short, clear title.",
+    labelCategory: "Category *",
+    selectCategory: "Select a category",
+    errorCategory: "Choose the category that fits best.",
+    labelAudience: "Target audience *",
+    placeholderAudience: "e.g. Customer Service team, all shifts",
+    errorAudience: "Who does this idea affect or serve?",
+    labelChallenge: "Target challenge *",
+    placeholderChallenge: "What organisational challenge does this address?",
+    errorChallenge: "Describe the challenge this idea targets.",
+    labelProblem: "Current problem *",
+    placeholderProblem: "What's happening today that isn't working?",
+    errorProblem: "Describe the current problem.",
+    labelSolution: "Proposed solution *",
+    placeholderSolution: "What are you proposing, concretely?",
+    errorSolution: "Describe your proposed solution.",
+    labelAttachment: "Attachment",
+    attachmentHint: "Click to attach a file (mock upload — stores the file name only)",
+    btnDelete: "Delete",
+    btnDraft: "Save as draft",
+    btnPost: "Post idea",
+    btnSaveChanges: "Save changes",
+    myIdeasTitle: "My ideas",
+    myIdeasCount: (n) => `${n} total`,
+    emptyTitle: "No ideas yet",
+    emptyDesc: "Your drafts and submitted ideas will appear here.",
+    btnEdit: "Edit",
+    btnDeleteSmall: "Delete",
+    toastDraftTitleRequired: "Give your draft a title before saving.",
+    toastFillRequired: "Please complete all required fields.",
+    toastDraftUpdated: "Draft updated.",
+    toastIdeaPosted: "Idea posted.",
+    toastDraftSaved: "Draft saved.",
+    toastIdeaPostedFeed: "Idea posted to the feed.",
+    toastSaveError: "Could not save to Google Sheets: ",
+    deleteConfirmTitle: "Delete this idea?",
+    deleteConfirmMsg: (title, extra) => `“${title}” will be permanently removed${extra}. This can't be undone.`,
+    deleteExtra: ", including its comments, ratings and reactions",
+    btnConfirmDelete: "Delete",
+    toastDeleted: "Idea deleted.",
+    toastDeleteError: "Could not delete: ",
+    attachmentPrefix: "📎 ",
+    status: { Draft: "Draft", Submitted: "Submitted", Approved: "Approved", Rejected: "Rejected", "Needs Revision": "Needs Revision" },
+  },
+  si: {
+    langName: "සිංහල",
+    eyebrow: "දායකත්වය",
+    pageTitle: "නවෝත්පාදන අදහසක් පළ කරන්න",
+    formTitleNew: "නව අදහස",
+    formTitleEditDraft: "කෙටුම්පත සංස්කරණය කරන්න",
+    formTitleEdit: "අදහස සංස්කරණය කරන්න",
+    formSubtitle: "* සලකුණු කළ ක්‍ෂේත්‍ර අනිවාර්යයි. ඕනෑම වේලාවක කෙටුම්පතක් ලෙස සුරකින්න, නැතහොත් සියල්ලන්ට පෙනෙන පරිදි සහ කමිටුව සමාලෝචනය කිරීම සඳහා පළ කරන්න.",
+    labelTitle: "අදහසේ මාතෘකාව *",
+    placeholderTitle: "උදා: පාරිභෝගික සේවා සඳහා AI ආධාරක ටිකට් වර්ගීකරණය",
+    errorTitle: "ඔබේ අදහසට කෙටි, පැහැදිලි මාතෘකාවක් දෙන්න.",
+    labelCategory: "වර්ගය *",
+    selectCategory: "වර්ගයක් තෝරන්න",
+    errorCategory: "වඩාත් ගැලපෙන වර්ගය තෝරන්න.",
+    labelAudience: "ඉලක්ක ප්‍රේක්ෂකයෝ *",
+    placeholderAudience: "උදා: පාරිභෝගික සේවා කණ්ඩායම, සියලුම මුරයන්",
+    errorAudience: "මෙම අදහසින් බලපාන්නේ හෝ සේවය කරන්නේ කාටද?",
+    labelChallenge: "ඉලක්ක අභියෝගය *",
+    placeholderChallenge: "මෙය විසඳන්නේ කුමන සංවිධානාත්මක අභියෝගයද?",
+    errorChallenge: "මෙම අදහස ඉලක්ක කරන අභියෝගය විස්තර කරන්න.",
+    labelProblem: "වත්මන් ගැටලුව *",
+    placeholderProblem: "අද සිදුවෙමින් තිබෙන්නේ, හරියටම නොවැඩකරන්නේ මොනවාද?",
+    errorProblem: "වත්මන් ගැටලුව විස්තර කරන්න.",
+    labelSolution: "යෝජිත විසඳුම *",
+    placeholderSolution: "ඔබ නිශ්චිතව යෝජනා කරන්නේ කුමක්ද?",
+    errorSolution: "ඔබේ යෝජිත විසඳුම විස්තර කරන්න.",
+    labelAttachment: "ඇමුණුම",
+    attachmentHint: "ගොනුවක් අමුණන්න (mock upload — ගොනු නාමය පමණක් සුරකියි)",
+    btnDelete: "මකන්න",
+    btnDraft: "කෙටුම්පතක් ලෙස සුරකින්න",
+    btnPost: "අදහස පළ කරන්න",
+    btnSaveChanges: "වෙනස්කම් සුරකින්න",
+    myIdeasTitle: "මගේ අදහස්",
+    myIdeasCount: (n) => `මුළු ${n}`,
+    emptyTitle: "තවම අදහස් නැත",
+    emptyDesc: "ඔබේ කෙටුම්පත් සහ පළ කළ අදහස් මෙහි පෙනෙනු ඇත.",
+    btnEdit: "සංස්කරණය",
+    btnDeleteSmall: "මකන්න",
+    toastDraftTitleRequired: "සුරැකීමට පෙර ඔබේ කෙටුම්පතට මාතෘකාවක් දෙන්න.",
+    toastFillRequired: "කරුණාකර සියලුම අවශ්‍ය ක්ෂේත්‍ර පුරවන්න.",
+    toastDraftUpdated: "කෙටුම්පත යාවත්කාලීන කරන ලදී.",
+    toastIdeaPosted: "අදහස පළ කරන ලදී.",
+    toastDraftSaved: "කෙටුම්පත සුරකින ලදී.",
+    toastIdeaPostedFeed: "අදහස feed එකට පළ කරන ලදී.",
+    toastSaveError: "Google Sheets වෙත සුරැකිය නොහැකි විය: ",
+    deleteConfirmTitle: "මෙම අදහස මකන්නද?",
+    deleteConfirmMsg: (title, extra) => `“${title}” ස්ථිරවම ඉවත් කරනු ඇත${extra}. මෙය අහෝසි කළ නොහැක.`,
+    deleteExtra: ", එහි අදහස්, ශ්‍රේණිගත කිරීම් සහ ප්‍රතිචාර ඇතුළුව",
+    btnConfirmDelete: "මකන්න",
+    toastDeleted: "අදහස මකා දමන ලදී.",
+    toastDeleteError: "මකා දැමිය නොහැකි විය: ",
+    attachmentPrefix: "📎 ",
+    status: { Draft: "කෙටුම්පත", Submitted: "ඉදිරිපත් කළා", Approved: "අනුමත කළා", Rejected: "ප්‍රතික්ෂේප කළා", "Needs Revision": "සංශෝධන අවශ්‍යයි" },
+  },
+  ta: {
+    langName: "தமிழ்",
+    eyebrow: "பங்களிப்பு",
+    pageTitle: "ஒரு புதுமையான யோசனையை பதிவிடவும்",
+    formTitleNew: "புதிய யோசனை",
+    formTitleEditDraft: "வரைவைத் திருத்து",
+    formTitleEdit: "யோசனையைத் திருத்து",
+    formSubtitle: "* குறியிடப்பட்ட புலங்கள் அவசியம். எந்த நேரத்திலும் வரைவாக சேமிக்கவும், அல்லது அனைவரும் காணும்படியும் குழு மதிப்பாய்வு செய்யும்படியும் வெளியிடவும்.",
+    labelTitle: "யோசனையின் தலைப்பு *",
+    placeholderTitle: "உதா: வாடிக்கையாளர் சேவைக்கான AI உதவி டிக்கெட் வகைப்பாடு",
+    errorTitle: "உங்கள் யோசனைக்கு ஒரு சுருக்கமான, தெளிவான தலைப்பைக் கொடுங்கள்.",
+    labelCategory: "வகை *",
+    selectCategory: "ஒரு வகையைத் தேர்ந்தெடுக்கவும்",
+    errorCategory: "மிகவும் பொருத்தமான வகையைத் தேர்ந்தெடுக்கவும்.",
+    labelAudience: "இலக்கு பார்வையாளர்கள் *",
+    placeholderAudience: "உதா: வாடிக்கையாளர் சேவைக் குழு, அனைத்து ஷிப்ட்களும்",
+    errorAudience: "இந்த யோசனை யாரை பாதிக்கிறது அல்லது சேவை செய்கிறது?",
+    labelChallenge: "இலக்கு சவால் *",
+    placeholderChallenge: "இது எந்த நிறுவன சவாலை நிவர்த்தி செய்கிறது?",
+    errorChallenge: "இந்த யோசனை இலக்காகக் கொண்டுள்ள சவாலை விவரிக்கவும்.",
+    labelProblem: "தற்போதைய பிரச்சினை *",
+    placeholderProblem: "இன்று என்ன நடக்கிறது, வேலை செய்யவில்லை?",
+    errorProblem: "தற்போதைய பிரச்சினையை விவரிக்கவும்.",
+    labelSolution: "முன்மொழியப்பட்ட தீர்வு *",
+    placeholderSolution: "நீங்கள் திட்டவட்டமாக என்ன முன்மொழிகிறீர்கள்?",
+    errorSolution: "உங்கள் முன்மொழியப்பட்ட தீர்வை விவரிக்கவும்.",
+    labelAttachment: "இணைப்பு",
+    attachmentHint: "ஒரு கோப்பை இணைக்க கிளிக் செய்யவும் (போலி பதிவேற்றம் — கோப்பு பெயரை மட்டும் சேமிக்கும்)",
+    btnDelete: "நீக்கு",
+    btnDraft: "வரைவாக சேமி",
+    btnPost: "யோசனையை வெளியிடு",
+    btnSaveChanges: "மாற்றங்களை சேமி",
+    myIdeasTitle: "எனது யோசனைகள்",
+    myIdeasCount: (n) => `மொத்தம் ${n}`,
+    emptyTitle: "இன்னும் யோசனைகள் இல்லை",
+    emptyDesc: "உங்கள் வரைவுகள் மற்றும் சமர்ப்பிக்கப்பட்ட யோசனைகள் இங்கே தோன்றும்.",
+    btnEdit: "திருத்து",
+    btnDeleteSmall: "நீக்கு",
+    toastDraftTitleRequired: "சேமிப்பதற்கு முன் உங்கள் வரைவுக்கு தலைப்பு கொடுங்கள்.",
+    toastFillRequired: "தயவுசெய்து அனைத்து தேவையான புலங்களையும் பூர்த்தி செய்யவும்.",
+    toastDraftUpdated: "வரைவு புதுப்பிக்கப்பட்டது.",
+    toastIdeaPosted: "யோசனை வெளியிடப்பட்டது.",
+    toastDraftSaved: "வரைவு சேமிக்கப்பட்டது.",
+    toastIdeaPostedFeed: "யோசனை ஊட்டத்தில் வெளியிடப்பட்டது.",
+    toastSaveError: "Google Sheets இல் சேமிக்க முடியவில்லை: ",
+    deleteConfirmTitle: "இந்த யோசனையை நீக்கவா?",
+    deleteConfirmMsg: (title, extra) => `“${title}” நிரந்தரமாக அகற்றப்படும்${extra}. இதை மீட்டெடுக்க முடியாது.`,
+    deleteExtra: ", அதன் கருத்துகள், மதிப்பீடுகள் மற்றும் எதிர்வினைகள் உட்பட",
+    btnConfirmDelete: "நீக்கு",
+    toastDeleted: "யோசனை நீக்கப்பட்டது.",
+    toastDeleteError: "நீக்க முடியவில்லை: ",
+    attachmentPrefix: "📎 ",
+    status: { Draft: "வரைவு", Submitted: "சமர்ப்பிக்கப்பட்டது", Approved: "அங்கீகரிக்கப்பட்டது", Rejected: "நிராகரிக்கப்பட்டது", "Needs Revision": "திருத்தம் தேவை" },
+  },
+};
+
+let lang = localStorage.getItem('twc_lang') || 'en';
+function t(key){ return (LANGS[lang] && LANGS[lang][key] !== undefined) ? LANGS[lang][key] : LANGS.en[key]; }
+
+let user = null;
+let editingId = null;
+
+function categoryOptions(selected){
+  return STORE.categories().all().map(c=>`<option value="${c.id}" ${c.id===selected?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
+}
+
+function langSwitchHtml(){
+  return `<div class="lang-switch">
+    ${Object.keys(LANGS).map(code => `<button type="button" class="${lang===code?'active':''}" onclick="setLang('${code}')">${LANGS[code].langName}</button>`).join('')}
+  </div>`;
+}
+
+function setLang(code){
+  lang = code;
+  localStorage.setItem('twc_lang', code);
+  document.body.classList.remove('lang-en','lang-si','lang-ta');
+  document.body.classList.add('lang-'+code);
+  // Update the existing topbar in place — do NOT call renderShell() again,
+  // it inserts a fresh shell each time rather than replacing the current one.
+  document.querySelector('.topbar__eyebrow').textContent = t('eyebrow');
+  document.querySelector('.topbar__title').textContent = t('pageTitle');
+  document.querySelector('.topbar__actions').innerHTML = langSwitchHtml();
+  renderPage();
+}
+
+function renderPage(){
+  const myIdeas = STORE.ideas().where(i=>i.authorId===user.id).sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt));
+
+  document.getElementById('content-mount').innerHTML = `
+    <div style="display:grid;grid-template-columns:1.15fr 0.85fr;gap:20px;align-items:start;">
+      <div class="card card-pad">
+        <div class="panel-head">
+          <div><h3 id="form-title">${t('formTitleNew')}</h3><p>${t('formSubtitle')}</p></div>
+        </div>
+        <form id="idea-form" novalidate>
+          <input type="hidden" id="idea-id">
+          <div class="field" id="f-title">
+            <label for="title">${t('labelTitle')}</label>
+            <input class="input" id="title" placeholder="${escapeHtml(t('placeholderTitle'))}">
+            <div class="error-text">${t('errorTitle')}</div>
+          </div>
+          <div class="field-row">
+            <div class="field" id="f-category">
+              <label for="category">${t('labelCategory')}</label>
+              <select class="input" id="category"><option value="">${t('selectCategory')}</option>${categoryOptions()}</select>
+              <div class="error-text">${t('errorCategory')}</div>
+            </div>
+            <div class="field" id="f-audience">
+              <label for="audience">${t('labelAudience')}</label>
+              <input class="input" id="audience" placeholder="${escapeHtml(t('placeholderAudience'))}">
+              <div class="error-text">${t('errorAudience')}</div>
+            </div>
+          </div>
+          <div class="field" id="f-challenge">
+            <label for="challenge">${t('labelChallenge')}</label>
+            <textarea class="input" id="challenge" placeholder="${escapeHtml(t('placeholderChallenge'))}"></textarea>
+            <div class="error-text">${t('errorChallenge')}</div>
+          </div>
+          <div class="field" id="f-problem">
+            <label for="problem">${t('labelProblem')}</label>
+            <textarea class="input" id="problem" placeholder="${escapeHtml(t('placeholderProblem'))}"></textarea>
+            <div class="error-text">${t('errorProblem')}</div>
+          </div>
+          <div class="field" id="f-solution">
+            <label for="solution">${t('labelSolution')}</label>
+            <textarea class="input" id="solution" placeholder="${escapeHtml(t('placeholderSolution'))}"></textarea>
+            <div class="error-text">${t('errorSolution')}</div>
+          </div>
+          <div class="field">
+            <label>${t('labelAttachment')}</label>
+            <div class="file-drop" id="file-drop">${ICONS.paperclip} &nbsp;${t('attachmentHint')}</div>
+            <input type="file" id="file-input" style="display:none;">
+          </div>
+
+          <div class="divider"></div>
+          <div class="gap-8" style="justify-content:flex-end;">
+            <button type="button" class="btn btn-danger" id="delete-btn" style="display:none;">${ICONS.trash} ${t('btnDelete')}</button>
+            <button type="button" class="btn btn-outline" id="draft-btn">${t('btnDraft')}</button>
+            <button type="submit" class="btn btn-primary" id="post-btn">${t('btnPost')}</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card card-pad">
+        <div class="panel-head"><div><h3>${t('myIdeasTitle')}</h3><p>${t('myIdeasCount')(myIdeas.length)}</p></div></div>
+        <div id="my-ideas-list">
+          ${myIdeas.length===0 ? `<div class="empty-state">${ICONS.bulb}<h3>${t('emptyTitle')}</h3><p>${t('emptyDesc')}</p></div>` :
+          myIdeas.map(i=>`
+            <div class="card" style="padding:13px 14px;margin-bottom:10px;">
+              <div class="flex-between" style="align-items:flex-start;">
+                <div style="min-width:0;">
+                  <div class="name-strong" style="font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;">${escapeHtml(i.title)}</div>
+                  <div class="muted" style="font-size:11.5px;margin-top:2px;">${fmtDate(i.updatedAt)}</div>
+                </div>
+                <span class="pill pill-status-${i.status.toLowerCase().replace(' ','-')} hex-tag">${escapeHtml(t('status')[i.status] || i.status)}</span>
+              </div>
+              <div class="gap-8" style="margin-top:10px;">
+                <button class="btn btn-ghost btn-sm" onclick="loadIdea('${i.id}')">${ICONS.edit} ${t('btnEdit')}</button>
+                <button class="btn btn-ghost btn-sm" style="color:var(--rust)" onclick="deleteIdea('${i.id}')">${ICONS.trash} ${t('btnDeleteSmall')}</button>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('idea-form').addEventListener('submit', async (e)=>{ e.preventDefault(); await saveIdea('Submitted'); });
+  document.getElementById('draft-btn').addEventListener('click', async ()=>{ await saveIdea('Draft'); });
+  document.getElementById('delete-btn').addEventListener('click', ()=>{ if(editingId) deleteIdea(editingId); });
+  document.getElementById('file-drop').addEventListener('click', ()=> document.getElementById('file-input').click());
+  document.getElementById('file-input').addEventListener('change', (e)=>{
+    const f = e.target.files[0];
+    const drop = document.getElementById('file-drop');
+    if(f){ drop.textContent = t('attachmentPrefix') + f.name; drop.classList.add('has-file'); drop.dataset.filename = f.name; }
+  });
+}
+
+function clearErrors(){
+  ['title','category','audience','challenge','problem','solution'].forEach(id=>{
+    document.getElementById('f-'+id).classList.remove('invalid');
+  });
+}
+
+function validate(){
+  clearErrors();
+  const vals = {
+    title: document.getElementById('title').value.trim(),
+    category: document.getElementById('category').value,
+    audience: document.getElementById('audience').value.trim(),
+    challenge: document.getElementById('challenge').value.trim(),
+    problem: document.getElementById('problem').value.trim(),
+    solution: document.getElementById('solution').value.trim(),
+  };
+  let valid = true;
+  Object.entries(vals).forEach(([k,v])=>{
+    if(!v){ document.getElementById('f-'+k).classList.add('invalid'); valid = false; }
+  });
+  return valid ? vals : null;
+}
+
+async function saveIdea(status){
+  // Draft only requires a title so users can save partial work.
+  let vals;
+  if(status === 'Draft'){
+    const title = document.getElementById('title').value.trim();
+    if(!title){ document.getElementById('f-title').classList.add('invalid'); toast(t('toastDraftTitleRequired'), 'error'); return; }
+    vals = {
+      title,
+      category: document.getElementById('category').value,
+      audience: document.getElementById('audience').value.trim(),
+      challenge: document.getElementById('challenge').value.trim(),
+      problem: document.getElementById('problem').value.trim(),
+      solution: document.getElementById('solution').value.trim(),
+    };
+  } else {
+    vals = validate();
+    if(!vals){ toast(t('toastFillRequired'), 'error'); return; }
+  }
+
+  const attachmentName = document.getElementById('file-drop').dataset.filename || '';
+  const payload = {
+    title: vals.title, categoryId: vals.category, targetChallenge: vals.challenge,
+    currentProblem: vals.problem, proposedSolution: vals.solution, targetAudience: vals.audience,
+    attachmentName, authorId: user.id, department: user.department,
+    status, updatedAt: STORE.nowISO(),
+  };
+
+  const submitBtns = document.querySelectorAll('#idea-form button');
+  submitBtns.forEach(b=>b.disabled = true);
+  try{
+    if(editingId){
+      await STORE.ideas().update(editingId, payload);
+      toast(status==='Draft' ? t('toastDraftUpdated') : t('toastIdeaPosted'), 'success');
+    } else {
+      payload.id = STORE.uid('idea'); payload.createdAt = STORE.nowISO();
+      await STORE.ideas().insert(payload);
+      toast(status==='Draft' ? t('toastDraftSaved') : t('toastIdeaPostedFeed'), 'success');
+    }
+    resetForm();
+    renderPage();
+  } catch(err){
+    toast(t('toastSaveError') + (err.message||err), 'error');
+    submitBtns.forEach(b=>b.disabled = false);
+  }
+}
+
+function loadIdea(id){
+  const idea = STORE.ideas().find(id);
+  if(!idea) return;
+  editingId = id;
+  document.getElementById('form-title').textContent = idea.status === 'Draft' ? t('formTitleEditDraft') : t('formTitleEdit');
+  document.getElementById('title').value = idea.title;
+  document.getElementById('category').value = idea.categoryId;
+  document.getElementById('audience').value = idea.targetAudience;
+  document.getElementById('challenge').value = idea.targetChallenge;
+  document.getElementById('problem').value = idea.currentProblem;
+  document.getElementById('solution').value = idea.proposedSolution;
+  const drop = document.getElementById('file-drop');
+  if(idea.attachmentName){ drop.textContent = t('attachmentPrefix') + idea.attachmentName; drop.classList.add('has-file'); drop.dataset.filename = idea.attachmentName; }
+  document.getElementById('delete-btn').style.display = 'inline-flex';
+  document.getElementById('post-btn').textContent = idea.status === 'Draft' ? t('btnPost') : t('btnSaveChanges');
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function deleteIdea(id){
+  const idea = STORE.ideas().find(id);
+  confirmAction({
+    title: t('deleteConfirmTitle'),
+    message: t('deleteConfirmMsg')(idea.title, idea.status!=='Draft' ? t('deleteExtra') : ''),
+    confirmLabel: t('btnConfirmDelete'), danger: true,
+    onConfirm: async ()=>{
+      try{
+        await STORE.ideas().remove(id);
+        const relComments = STORE.comments().where(c=>c.ideaId===id);
+        const relRatings = STORE.ratings().where(r=>r.ideaId===id);
+        const relReactions = STORE.reactions().where(r=>r.ideaId===id);
+        for(const c of relComments) await STORE.comments().remove(c.id);
+        for(const r of relRatings) await STORE.ratings().remove(r.id);
+        for(const r of relReactions) await STORE.reactions().remove(r.id);
+        if(editingId===id) resetForm();
+        toast(t('toastDeleted'), 'success');
+        renderPage();
+      } catch(err){
+        toast(t('toastDeleteError') + (err.message||err), 'error');
+      }
+    }
+  });
+}
+
+function resetForm(){
+  editingId = null;
+  document.getElementById('idea-form').reset();
+  const drop = document.getElementById('file-drop');
+  if(drop){ drop.textContent = ICONS.paperclip + ' \u00a0' + t('attachmentHint'); drop.classList.remove('has-file'); drop.dataset.filename=''; }
+  const del = document.getElementById('delete-btn'); if(del) del.style.display='none';
+  const pb = document.getElementById('post-btn'); if(pb) pb.textContent = t('btnPost');
+  const ft = document.getElementById('form-title'); if(ft) ft.textContent = t('formTitleNew');
+}
+
+bootPage(async ()=>{
+  document.body.classList.add('lang-'+lang);
+  user = renderShell({
+    activePage:'idea-post.html', eyebrow:t('eyebrow'), title:t('pageTitle'),
+    topbarActionsHtml: langSwitchHtml()
+  });
+  if(!user) return;
+  renderPage();
+});
+</script>
+</body>
+</html>
