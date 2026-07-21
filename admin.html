@@ -73,7 +73,7 @@ function userFormModal(existing){
     </div>
   `);
 
-  document.getElementById('save-user-btn').addEventListener('click', async ()=>{
+  document.getElementById('save-user-btn').addEventListener('click', ()=> guardedAction(async ()=>{
     const fields = ['fullName','callName','department','role','email'];
     if(!isEdit) fields.push('password');
     let valid = true;
@@ -96,7 +96,7 @@ function userFormModal(existing){
       email,
     };
     const btn = document.getElementById('save-user-btn');
-    btn.disabled = true; btn.textContent = 'Saving…';
+    setBtnBusy(btn, isEdit ? 'Saving…' : 'Creating…');
     try{
       if(isEdit){
         await STORE.users().update(existing.id, payload);
@@ -113,9 +113,9 @@ function userFormModal(existing){
       renderList();
     } catch(err){
       toast('Could not save user: ' + (err.message||err), 'error');
-      btn.disabled = false; btn.textContent = isEdit?'Save changes':'Create user';
+      clearBtnBusy(btn);
     }
-  });
+  }));
 }
 
 function resetPasswordModal(u){
@@ -134,31 +134,35 @@ function resetPasswordModal(u){
       <button class="btn btn-primary" id="confirm-reset-btn">Reset password</button>
     </div>
   `);
-  document.getElementById('confirm-reset-btn').addEventListener('click', async ()=>{
+  document.getElementById('confirm-reset-btn').addEventListener('click', ()=> guardedAction(async ()=>{
     const val = document.getElementById('newpass').value;
     if(!val){ document.getElementById('f-newpass').classList.add('invalid'); return; }
     const btn = document.getElementById('confirm-reset-btn');
-    btn.disabled = true; btn.textContent = 'Saving…';
+    setBtnBusy(btn, 'Saving…');
     try{
       await STORE.users().update(u.id, { password: val });
       toast('Password reset.', 'success');
       closeModal();
     } catch(err){
       toast('Could not reset password: ' + (err.message||err), 'error');
-      btn.disabled = false; btn.textContent = 'Reset password';
+      clearBtnBusy(btn);
     }
-  });
+  }));
 }
 
-async function toggleStatus(u){
-  const next = u.status === 'Active' ? 'Inactive' : 'Active';
-  try{
-    await STORE.users().update(u.id, { status: next });
-    toast(`User ${next==='Active'?'reactivated':'deactivated'}.`, 'success');
-    renderList();
-  } catch(err){
-    toast('Could not update status: ' + (err.message||err), 'error');
-  }
+function toggleStatus(u, btnEl){
+  guardedAction(async ()=>{
+    if(btnEl) setBtnBusy(btnEl, '');
+    const next = u.status === 'Active' ? 'Inactive' : 'Active';
+    try{
+      await STORE.users().update(u.id, { status: next });
+      toast(`User ${next==='Active'?'reactivated':'deactivated'}.`, 'success');
+      renderList();
+    } catch(err){
+      toast('Could not update status: ' + (err.message||err), 'error');
+      if(btnEl) clearBtnBusy(btnEl);
+    }
+  });
 }
 
 function deleteUser(u){
@@ -166,7 +170,7 @@ function deleteUser(u){
   confirmAction({
     title:'Delete this user?', message:`${u.fullName} will lose access immediately. Ideas they authored remain in the system.`,
     confirmLabel:'Delete', danger:true,
-    onConfirm: async ()=>{
+    onConfirm: ()=> guardedAction(async ()=>{
       try{
         await STORE.users().remove(u.id);
         toast('User deleted.', 'success');
@@ -174,7 +178,7 @@ function deleteUser(u){
       } catch(err){
         toast('Could not delete user: ' + (err.message||err), 'error');
       }
-    }
+    })
   });
 }
 
@@ -200,7 +204,7 @@ function renderList(){
                   <div class="gap-8">
                     <button class="btn btn-ghost btn-sm" title="Edit" onclick='userFormModal(${JSON.stringify(u).replace(/'/g,"&#39;")})'>${ICONS.edit}</button>
                     <button class="btn btn-ghost btn-sm" title="Reset password" onclick='resetPasswordModal(${JSON.stringify(u).replace(/'/g,"&#39;")})'>${ICONS.key}</button>
-                    <button class="btn btn-ghost btn-sm" title="${u.status==='Active'?'Deactivate':'Reactivate'}" onclick='toggleStatus(${JSON.stringify(u).replace(/'/g,"&#39;")})'>${u.status==='Active'?'⏸':'▶'}</button>
+                    <button class="btn btn-ghost btn-sm" title="${u.status==='Active'?'Deactivate':'Reactivate'}" onclick='toggleStatus(${JSON.stringify(u).replace(/'/g,"&#39;")}, this)'>${u.status==='Active'?'⏸':'▶'}</button>
                     <button class="btn btn-ghost btn-sm" style="color:var(--rust)" title="Delete" onclick='deleteUser(${JSON.stringify(u).replace(/'/g,"&#39;")})'>${ICONS.trash}</button>
                   </div>
                 </td>

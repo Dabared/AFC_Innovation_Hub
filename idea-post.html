@@ -231,7 +231,7 @@ function renderPage(){
   const myIdeas = STORE.ideas().where(i=>i.authorId===user.id).sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt));
 
   document.getElementById('content-mount').innerHTML = `
-    <div style="display:grid;grid-template-columns:1.15fr 0.85fr;gap:20px;align-items:start;">
+    <div class="two-pane" style="display:grid;grid-template-columns:1.15fr 0.85fr;gap:20px;align-items:start;">
       <div class="card card-pad">
         <div class="panel-head">
           <div><h3 id="form-title">${t('formTitleNew')}</h3><p>${t('formSubtitle')}</p></div>
@@ -308,8 +308,8 @@ function renderPage(){
     </div>
   `;
 
-  document.getElementById('idea-form').addEventListener('submit', async (e)=>{ e.preventDefault(); await saveIdea('Submitted'); });
-  document.getElementById('draft-btn').addEventListener('click', async ()=>{ await saveIdea('Draft'); });
+  document.getElementById('idea-form').addEventListener('submit', (e)=>{ e.preventDefault(); guardedAction(()=>saveIdea('Submitted', e.submitter)); });
+  document.getElementById('draft-btn').addEventListener('click', (e)=>{ guardedAction(()=>saveIdea('Draft', e.currentTarget)); });
   document.getElementById('delete-btn').addEventListener('click', ()=>{ if(editingId) deleteIdea(editingId); });
   document.getElementById('file-drop').addEventListener('click', ()=> document.getElementById('file-input').click());
   document.getElementById('file-input').addEventListener('change', (e)=>{
@@ -342,7 +342,7 @@ function validate(){
   return valid ? vals : null;
 }
 
-async function saveIdea(status){
+async function saveIdea(status, triggerBtn){
   // Draft only requires a title so users can save partial work.
   let vals;
   if(status === 'Draft'){
@@ -370,7 +370,8 @@ async function saveIdea(status){
   };
 
   const submitBtns = document.querySelectorAll('#idea-form button');
-  submitBtns.forEach(b=>b.disabled = true);
+  submitBtns.forEach(b => b.disabled = true);
+  if(triggerBtn) setBtnBusy(triggerBtn, status==='Draft' ? 'Saving…' : 'Posting…');
   try{
     if(editingId){
       await STORE.ideas().update(editingId, payload);
@@ -385,6 +386,7 @@ async function saveIdea(status){
   } catch(err){
     toast(t('toastSaveError') + (err.message||err), 'error');
     submitBtns.forEach(b=>b.disabled = false);
+    if(triggerBtn) clearBtnBusy(triggerBtn);
   }
 }
 
@@ -412,7 +414,7 @@ function deleteIdea(id){
     title: t('deleteConfirmTitle'),
     message: t('deleteConfirmMsg')(idea.title, idea.status!=='Draft' ? t('deleteExtra') : ''),
     confirmLabel: t('btnConfirmDelete'), danger: true,
-    onConfirm: async ()=>{
+    onConfirm: ()=> guardedAction(async ()=>{
       try{
         await STORE.ideas().remove(id);
         const relComments = STORE.comments().where(c=>c.ideaId===id);
@@ -427,7 +429,7 @@ function deleteIdea(id){
       } catch(err){
         toast(t('toastDeleteError') + (err.message||err), 'error');
       }
-    }
+    })
   });
 }
 

@@ -90,13 +90,13 @@ function formModal(existing){
       <button class="btn btn-primary" id="save-item-btn">${isEdit?'Save changes':'Add '+cfg.label.toLowerCase()}</button>
     </div>
   `);
-  document.getElementById('save-item-btn').addEventListener('click', async ()=>{
+  document.getElementById('save-item-btn').addEventListener('click', ()=> guardedAction(async ()=>{
     const name = document.getElementById('item-name').value.trim();
     if(!name){ document.getElementById('f-name').classList.add('invalid'); return; }
     const payload = { name };
     if(cfg.hasDescription) payload.description = document.getElementById('item-desc').value.trim();
     const btn = document.getElementById('save-item-btn');
-    btn.disabled = true; btn.textContent = 'Saving…';
+    setBtnBusy(btn, isEdit ? 'Saving…' : 'Adding…');
     try{
       if(isEdit){ await cfg.table().update(existing.id, payload); toast('Updated.', 'success'); }
       else { payload.id = STORE.uid(mTab.slice(0,4)); await cfg.table().insert(payload); toast('Added.', 'success'); }
@@ -104,9 +104,9 @@ function formModal(existing){
       renderList();
     } catch(err){
       toast('Could not save: ' + (err.message||err), 'error');
-      btn.disabled = false; btn.textContent = isEdit?'Save changes':'Add '+cfg.label.toLowerCase();
+      clearBtnBusy(btn);
     }
-  });
+  }));
 }
 
 function removeItem(id, usedCount){
@@ -117,7 +117,7 @@ function removeItem(id, usedCount){
   }
   confirmAction({
     title:`Delete this ${cfg.label.toLowerCase()}?`, message:'This cannot be undone.', confirmLabel:'Delete', danger:true,
-    onConfirm: async ()=>{
+    onConfirm: ()=> guardedAction(async ()=>{
       try{
         await cfg.table().remove(id);
         toast('Deleted.', 'success');
@@ -125,7 +125,7 @@ function removeItem(id, usedCount){
       } catch(err){
         toast('Could not delete: ' + (err.message||err), 'error');
       }
-    }
+    })
   });
 }
 
