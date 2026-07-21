@@ -24,6 +24,8 @@ const ICONS = {
   building: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 8h1M14 8h1M9 12h1M14 12h1M9 16h1M14 16h1"/></svg>',
   chevronDown: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
   inbox: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4.5l1.5 3h6l1.5-3H21"/><path d="M5.5 5.5h13l2.5 6.5v7a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19v-7Z"/></svg>',
+  close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>',
 };
 
 function fmtDate(iso){
@@ -61,8 +63,15 @@ function renderShell({ activePage, title, eyebrow, topbarActionsHtml }){
       ${ICONS[i.icon]}<span>${i.label}</span>
     </a>`).join('');
 
+  // Every screen gets a standard "back to main page" close button, except the
+  // main page itself (Lead Dashboard), where it would be redundant.
+  const closeBtnHtml = activePage !== 'dashboard.html'
+    ? `<button class="topbar-close-btn" id="topbar-close-btn" title="Back to Dashboard" aria-label="Back to Dashboard">${ICONS.close}</button>`
+    : '';
+
   document.body.insertAdjacentHTML('afterbegin', `
     <div class="app-shell">
+      <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
       <aside class="sidebar" id="sidebar">
         <div class="sidebar__brand">
           <div class="brand-mark"></div>
@@ -85,11 +94,14 @@ function renderShell({ activePage, title, eyebrow, topbarActionsHtml }){
       </aside>
       <div class="main">
         <header class="topbar">
-          <div>
-            <div class="topbar__eyebrow">${eyebrow||''}</div>
-            <div class="topbar__title">${title||''}</div>
+          <div class="topbar__left">
+            <button class="hamburger-btn" id="hamburger-btn" aria-label="Open menu">${ICONS.menu}</button>
+            <div>
+              <div class="topbar__eyebrow">${eyebrow||''}</div>
+              <div class="topbar__title">${title||''}</div>
+            </div>
           </div>
-          <div class="topbar__actions">${topbarActionsHtml||''}</div>
+          <div class="topbar__actions">${topbarActionsHtml||''}${closeBtnHtml}</div>
         </header>
         <main class="content" id="content-mount"></main>
       </div>
@@ -101,8 +113,28 @@ function renderShell({ activePage, title, eyebrow, topbarActionsHtml }){
   document.getElementById('logout-btn').addEventListener('click', () => {
     AUTH.logout(); window.location.href = 'index.html';
   });
+  if(closeBtnHtml){
+    document.getElementById('topbar-close-btn').addEventListener('click', () => {
+      window.location.href = 'dashboard.html';
+    });
+  }
+  const hamburgerBtn = document.getElementById('hamburger-btn');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  hamburgerBtn.addEventListener('click', () => toggleSidebar());
+  backdrop.addEventListener('click', () => toggleSidebar(false));
+  // Closing the drawer after picking a nav link keeps mobile navigation feeling instant.
+  document.querySelectorAll('.sidebar__link').forEach(a => a.addEventListener('click', () => toggleSidebar(false)));
 
   return user;
+}
+
+function toggleSidebar(force){
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  if(!sidebar || !backdrop) return;
+  const open = typeof force === 'boolean' ? force : !sidebar.classList.contains('open');
+  sidebar.classList.toggle('open', open);
+  backdrop.classList.toggle('open', open);
 }
 
 function toast(msg, type){
@@ -136,7 +168,11 @@ function confirmAction({ title, message, confirmLabel, danger, onConfirm }){
       <button class="btn ${danger?'btn-danger':'btn-primary'}" id="confirm-action-btn">${escapeHtml(confirmLabel||'Confirm')}</button>
     </div>
   `);
-  document.getElementById('confirm-action-btn').addEventListener('click', ()=>{ closeModal(); onConfirm(); });
+  document.getElementById('confirm-action-btn').addEventListener('click', (e)=>{
+    e.currentTarget.disabled = true;
+    closeModal();
+    onConfirm();
+  });
 }
 
 /* ---------- GLOBAL LOADER / ERROR OVERLAY (used while talking to the Google Sheet) ---------- */
@@ -187,4 +223,44 @@ async function bootPage(fn){
     console.error(err);
     toast('Something went wrong: ' + (err && err.message ? err.message : err), 'error');
   }
+}
+
+/* ============================================================
+   ACTION GUARD — prevents duplicate Google Sheet requests when a
+   click is slow to respond and the person taps the button again.
+   Every button that talks to the database (insert/update/remove)
+   should wrap its handler in guardedAction(); the button itself
+   should also be visually disabled via setBtnBusy/clearBtnBusy.
+   ============================================================ */
+let __actionBusy = false;
+async function guardedAction(fn){
+  if(__actionBusy){
+    toast("Still working on your last action — one moment…", 'error');
+    return;
+  }
+  __actionBusy = true;
+  try{
+    await fn();
+  } finally {
+    __actionBusy = false;
+  }
+}
+
+// Disables a button and swaps its label for a small inline spinner + busy text,
+// so a slow network response reads as "working" rather than "did nothing".
+function setBtnBusy(btn, busyLabel){
+  if(!btn || btn.dataset.busy === 'true') return;
+  btn.dataset.busy = 'true';
+  btn.dataset.origHtml = btn.innerHTML;
+  btn.disabled = true;
+  const label = busyLabel === undefined ? 'Please wait…' : busyLabel;
+  btn.innerHTML = `<span class="btn-spinner"></span>${escapeHtml(label)}`;
+}
+// Restores a button setBtnBusy() previously disabled. Safe to call even if the
+// button was already removed/re-rendered (e.g. after a successful save).
+function clearBtnBusy(btn){
+  if(!btn) return;
+  btn.disabled = false;
+  if(btn.dataset.origHtml !== undefined){ btn.innerHTML = btn.dataset.origHtml; delete btn.dataset.origHtml; }
+  delete btn.dataset.busy;
 }
